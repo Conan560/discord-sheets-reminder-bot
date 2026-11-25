@@ -17,3 +17,8 @@ test("calculates seven days before", () => {
   const now = new Date("2026-11-25T12:00:00Z");
   assert.equal(daysUntil("02/12/2026", now, "Europe/Paris"), 7);
 });
+
+test("reads European dot date format", () => {
+  const now = new Date("2026-11-23T12:00:00Z");
+  assert.equal(daysUntil("25.11.2026", now, "Europe/Paris"), 2);
+});

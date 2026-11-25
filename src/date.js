@@ -28,7 +28,7 @@ function parseSheetDate(value) {
     return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
   }
 
-  match = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  match = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
   if (match) {
     return { year: Number(match[3]), month: Number(match[2]), day: Number(match[1]) };
   }

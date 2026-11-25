@@ -1,72 +1,85 @@
-const { google } = require("googleapis");
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let value = "";
+  let quoted = false;
 
-const headers = [
-  "ID",
-  "Type",
-  "Matiere",
-  "Titre",
-  "A faire",
-  "Date",
-  "Statut",
-  "Rappel devoir",
-  "Rappel examen"
-];
-
-async function createSheetsClient(credentialsPath) {
-  const auth = new google.auth.GoogleAuth({
-    keyFile: credentialsPath,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"]
-  });
-  return google.sheets({ version: "v4", auth });
-}
-
-async function ensureHeader(sheets, sheetId, tab) {
-  const range = `${tab}!A1:I1`;
-  const response = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range });
-  const existing = response.data.values?.[0] ?? [];
-
-  if (existing.length !== headers.length || headers.some((name, index) => existing[index] !== name)) {
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: sheetId,
-      range,
-      valueInputOption: "RAW",
-      requestBody: { values: [headers] }
-    });
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '"' && quoted && text[index + 1] === '"') {
+      value += '"';
+      index += 1;
+    } else if (character === '"') {
+      quoted = !quoted;
+    } else if (character === "," && !quoted) {
+      row.push(value);
+      value = "";
+    } else if ((character === "\n" || character === "\r") && !quoted) {
+      if (character === "\r" && text[index + 1] === "\n") index += 1;
+      row.push(value);
+      if (row.some((cell) => cell !== "")) rows.push(row);
+      row = [];
+      value = "";
+    } else {
+      value += character;
+    }
   }
+
+  row.push(value);
+  if (row.some((cell) => cell !== "")) rows.push(row);
+  return rows;
 }
 
-async function readRows(sheets, sheetId, tab) {
-  await ensureHeader(sheets, sheetId, tab);
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: sheetId,
-    range: `${tab}!A2:I`
-  });
+async function readPublicRows(sheetId, tab) {
+  const url = new URL(`https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}/gviz/tq`);
+  url.searchParams.set("tqx", "out:csv");
+  url.searchParams.set("sheet", tab);
 
-  const rows = response.data.values ?? [];
-  return rows
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Google Sheets inaccessible (${response.status}). Rend le tableau accessible via le lien.`);
+  }
+
+  const rows = parseCsv(await response.text());
+  if (!rows.length) return [];
+  const normalized = (value) => String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+  const headerIndex = rows.findIndex((row) =>
+    row.some((value) => normalized(value) === "type") &&
+    row.some((value) => normalized(value) === "date")
+  );
+  const hasHeaders = headerIndex >= 0;
+  const resolvedHeaderIndex = hasHeaders ? headerIndex : 0;
+  const headers = hasHeaders
+    ? rows[headerIndex].map(normalized)
+    : ["id", "type", "matiere", "titre", "a faire", "date", "statut", "rappel devoir", "rappel examen"];
+  const column = (name) => headers.findIndex((header) => header === normalized(name));
+  const idColumn = column("id");
+  const typeColumn = column("type");
+  const subjectColumn = column("matiere");
+  const titleColumn = column("titre");
+  const instructionsColumn = column("a faire");
+  const dateColumn = column("date");
+  const statusColumn = column("statut");
+
+  return rows.slice(resolvedHeaderIndex + 1)
     .map((row, index) => ({
-      rowNumber: index + 2,
-      id: row[0]?.trim() || `ligne-${index + 2}`,
-      type: row[1]?.trim() || "",
-      subject: row[2]?.trim() || "",
-      title: row[3]?.trim() || "",
-      instructions: row[4]?.trim() || "",
-      date: row[5]?.trim() || "",
-      status: row[6]?.trim() || "",
-      homeworkReminder: row[7]?.trim() || "",
-      examReminder: row[8]?.trim() || ""
+      rowNumber: resolvedHeaderIndex + index + 2,
+      id: row[idColumn]?.trim() || `ligne-${resolvedHeaderIndex + index + 2}`,
+      type: row[typeColumn]?.trim() || "",
+      subject: row[subjectColumn]?.trim() || "",
+      title: row[titleColumn]?.trim() || "",
+      instructions: row[instructionsColumn]?.trim() || "",
+      date: row[dateColumn]?.trim() || "",
+      status: row[statusColumn]?.trim() || "",
+      homeworkReminder: "",
+      examReminder: ""
     }))
     .filter((row) => row.type || row.title);
 }
 
-async function markReminder(sheets, sheetId, tab, rowNumber, column, value) {
-  const columnLetter = column === "homeworkReminder" ? "H" : "I";
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: sheetId,
-    range: `${tab}!${columnLetter}${rowNumber}`,
-    valueInputOption: "RAW",
-    requestBody: { values: [[value]] }
-  });
-}
-
-module.exports = { createSheetsClient, readRows, markReminder };
+module.exports = { parseCsv, readPublicRows };

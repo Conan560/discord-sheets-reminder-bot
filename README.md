@@ -37,16 +37,14 @@ Tu peux partir d'une feuille vide : le bot crée automatiquement cette première
 - Les élèves peuvent modifier toutes les cellules.
 - Les colonnes `Rappel devoir` et `Rappel examen` sont ajoutées automatiquement par le bot ; ne les supprime pas.
 
-## 3. Créer le compte Google
+## 3. Aucun compte Google requis
 
-1. Ouvre Google Cloud Console : https://console.cloud.google.com/
-2. Crée un projet.
-3. Active l'API **Google Sheets API**.
-4. Crée un compte de service.
-5. Télécharge sa clé JSON et renomme-la `google-credentials.json` à la racine du projet.
-6. Dans Google Sheets, utilise « Partager » et ajoute l'adresse `client_email` du JSON avec l'autorisation « Éditeur ».
-7. Copie l'ID du Sheets depuis son URL :
-   `https://docs.google.com/spreadsheets/d/ID_DU_SHEET/edit`
+Le bot lit directement le tableau public. Il n'a besoin ni de clé Google Cloud, ni de compte de service, ni de fichier JSON.
+
+L'identifiant du tableau est déjà configuré dans `.env.example` :
+`1jJe1ZutUI0hm-SwT1uaD-pYEwt03rE69Ra5ENvciB5M`
+
+Tu dois seulement copier `.env.example` vers `.env`, puis renseigner le token Discord et l'ID du canal.
 
 ## 4. Installer et lancer
 
@@ -56,11 +54,10 @@ Avec Node.js 20 ou plus installé :
 cd C:\code\discord-sheets-bot
 Copy-Item .env.example .env
 npm install
-Copy-Item google-credentials.json.example google-credentials.json
 npm start
 ```
 
-Remplace ensuite les valeurs de `.env` et renseigne la vraie clé dans `google-credentials.json`.
+Renseigne ensuite `DISCORD_TOKEN` et `DISCORD_CHANNEL_ID` dans `.env`.
 
 Pour utiliser un rôle plutôt que `@everyone`, rends son identifiant disponible dans `PING_ROLE_ID`. Sinon laisse-le vide.
 
@@ -80,7 +77,6 @@ Depuis le dossier du projet :
 
 ```powershell
 Copy-Item .env.example .env
-# Place la clé Google dans ./google-credentials.json
 docker compose up -d --build
 docker compose logs -f
 ```
@@ -89,7 +85,7 @@ Sur Synology, QNAP ou un autre NAS :
 
 1. Installe Docker/Container Manager.
 2. Copie tout le dossier du projet sur le NAS.
-3. Place `.env` et `google-credentials.json` dans ce dossier.
+3. Place `.env` dans ce dossier.
 4. Lance `docker compose up -d --build` depuis un terminal SSH.
 
-Le conteneur redémarre automatiquement. Ne publie jamais `.env` ni `google-credentials.json` sur GitHub.
+Le conteneur redémarre automatiquement. Les rappels déjà envoyés sont conservés dans `./data/reminders.json`. Ne publie jamais `.env` sur GitHub.

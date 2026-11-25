@@ -1,14 +1,14 @@
 require("dotenv").config();
 
 const { Client, GatewayIntentBits } = require("discord.js");
-const { createSheetsClient, readRows, markReminder } = require("./sheets");
+const { readPublicRows } = require("./sheets");
 const { reminderFor, buildEmbed } = require("./reminders");
+const { loadSentReminderState, saveSentReminderState } = require("./state");
 
 const required = [
   "DISCORD_TOKEN",
   "DISCORD_CHANNEL_ID",
-  "GOOGLE_SHEET_ID",
-  "GOOGLE_APPLICATION_CREDENTIALS"
+  "GOOGLE_SHEET_ID"
 ];
 
 const missing = required.filter((name) => !process.env[name]);
@@ -22,7 +22,8 @@ const config = {
   tab: process.env.GOOGLE_SHEET_TAB || "Planning",
   roleId: process.env.PING_ROLE_ID || "",
   timeZone: process.env.TIMEZONE || "Europe/Paris",
-  intervalMinutes: Math.max(1, Number(process.env.CHECK_INTERVAL_MINUTES || 15))
+  intervalMinutes: Math.max(1, Number(process.env.CHECK_INTERVAL_MINUTES || 15)),
+  stateFile: process.env.REMINDER_STATE_FILE || "./data/reminders.json"
 };
 
 const client = new Client({
@@ -30,8 +31,9 @@ const client = new Client({
 });
 
 let running = false;
+const sentReminders = loadSentReminderState(config.stateFile);
 
-async function checkReminders(sheets) {
+async function checkReminders() {
   if (running) return;
   running = true;
 
@@ -39,13 +41,14 @@ async function checkReminders(sheets) {
     const channel = await client.channels.fetch(config.channelId);
     if (!channel?.isTextBased()) throw new Error("Le canal Discord configure n'est pas valide.");
 
-    const rows = await readRows(sheets, config.sheetId, config.tab);
+    const rows = await readPublicRows(config.sheetId, config.tab);
     const now = new Date();
 
     for (const row of rows) {
+      const reminderKey = `${row.id}-${row.date}`;
       const kind = reminderFor(row, now, config.timeZone);
       if (!kind) continue;
-
+      if (sentReminders[`${reminderKey}-${kind}`]) continue;
       const ping = config.roleId ? `<@&${config.roleId}>` : "@everyone";
       await channel.send({
         content: ping,
@@ -55,8 +58,8 @@ async function checkReminders(sheets) {
           : { parse: ["everyone"] }
       });
 
-      const column = kind === "exam" ? "examReminder" : "homeworkReminder";
-      await markReminder(sheets, config.sheetId, config.tab, row.rowNumber, column, now.toISOString());
+      sentReminders[`${reminderKey}-${kind}`] = now.toISOString();
+      saveSentReminderState(config.stateFile, sentReminders);
       console.log(`Rappel envoye pour "${row.title}" (ligne ${row.rowNumber})`);
     }
   } catch (error) {
@@ -68,10 +71,8 @@ async function checkReminders(sheets) {
 
 client.once("ready", async () => {
   console.log(`Connecte a Discord sous le nom ${client.user.tag}`);
-  const sheets = await createSheetsClient(process.env.GOOGLE_APPLICATION_CREDENTIALS);
-
-  await checkReminders(sheets);
-  setInterval(() => checkReminders(sheets), config.intervalMinutes * 60 * 1000);
+  await checkReminders();
+  setInterval(() => checkReminders(), config.intervalMinutes * 60 * 1000);
 });
 
 client.on("error", (error) => console.error("Erreur Discord:", error));
